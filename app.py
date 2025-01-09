@@ -1,86 +1,77 @@
+import datetime
+import csv
 import streamlit as st
-import pandas as pd
 
-# Fungsi membaca dataset
-@st.cache_data
-def baca_csv(nama_file):
-    return pd.read_csv(nama_file)
+class FishStockManagement:
+    def __init__(self):
+        self.stock = {}
 
-# Fungsi untuk mencatat penjualan
-def catat_penjualan(df, nama_ikan, jumlah_terjual):
-    stok = df.loc[df['Nama_Ikan'] == nama_ikan, 'Jumlah_Stok'].values[0]
-    harga = df.loc[df['Nama_Ikan'] == nama_ikan, 'Harga_Per_Kg'].values[0]
-    
-    if stok >= jumlah_terjual:
-        # Update stok di dataset
-        df.loc[df['Nama_Ikan'] == nama_ikan, 'Jumlah_Stok'] -= jumlah_terjual
-        pendapatan = jumlah_terjual * harga
-        return pendapatan, True
-    else:
-        return 0, False
+    def add_fish(self, fish_name, quantity):
+        if fish_name in self.stock:
+            self.stock[fish_name]['quantity'] += quantity
+        else:
+            self.stock[fish_name] = {
+                'quantity': quantity,
+                'added_date': datetime.datetime.now()
+            }
 
-# Fungsi untuk menyimpan dataset
-def simpan_csv(df, nama_file):
-    df.to_csv(nama_file, index=False)
+    def remove_fish(self, fish_name, quantity):
+        if fish_name in self.stock and self.stock[fish_name]['quantity'] >= quantity:
+            self.stock[fish_name]['quantity'] -= quantity
+            if self.stock[fish_name]['quantity'] == 0:
+                del self.stock[fish_name]
+        else:
+            st.error(f"Error: Not enough {fish_name} in stock or fish not found.")
 
-# Fungsi untuk menghitung laporan keuangan
-def laporan_keuangan(pendapatan_list):
-    return sum(pendapatan_list)
+    def view_stock(self):
+        if not self.stock:
+            st.write("No stock available.")
+        else:
+            for fish_name, details in self.stock.items():
+                st.write(f"- {fish_name}: {details['quantity']} units (Added: {details['added_date']})")
 
-# Main Streamlit App
-def main():
-    st.title("Aplikasi Pembukuan Stok Ikan")
-    
-    # File dataset
-    file_dataset = 'stok_ikan_besar.csv'
-    
-    # Baca data
-    try:
-        df = baca_csv(file_dataset)
-    except FileNotFoundError:
-        st.warning("Dataset tidak ditemukan. Silakan upload dataset baru!")
-        return
+    def upload_dataset(self, file):
+        try:
+            csv_reader = csv.DictReader(file)
+            for row in csv_reader:
+                fish_name = row['fish_name']
+                quantity = int(row['quantity'])
+                self.add_fish(fish_name, quantity)
+            st.success("Dataset successfully uploaded.")
+        except KeyError:
+            st.error("Dataset must contain 'fish_name' and 'quantity' columns.")
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
-    # Sidebar menu
-    st.sidebar.header("Menu")
-    menu = st.sidebar.selectbox("Pilih Menu", ["Lihat Stok", "Catat Penjualan", "Laporan Keuangan", "Upload Dataset"])
-    
-    # Fitur Lihat Stok
-    if menu == "Lihat Stok":
-        st.subheader("Stok Ikan Tersedia")
-        st.dataframe(df)
+stock_manager = FishStockManagement()
 
-    # Fitur Catat Penjualan
-    elif menu == "Catat Penjualan":
-        st.subheader("Catat Penjualan")
-        nama_ikan = st.selectbox("Pilih Nama Ikan", df['Nama_Ikan'])
-        jumlah_terjual = st.number_input("Jumlah yang Terjual (kg)", min_value=0, value=0, step=1)
-        
-        if st.button("Catat Penjualan"):
-            pendapatan, berhasil = catat_penjualan(df, nama_ikan, jumlah_terjual)
-            if berhasil:
-                simpan_csv(df, file_dataset)  # Simpan perubahan ke file
-                st.success(f"Penjualan berhasil dicatat! Pendapatan: Rp {pendapatan:,}")
-                st.dataframe(df)  # Tampilkan dataset terbaru
-            else:
-                st.error("Stok tidak mencukupi untuk transaksi ini.")
+st.title("Fish Stock Management")
 
-    # Fitur Laporan Keuangan
-    elif menu == "Laporan Keuangan":
-        st.subheader("Laporan Keuangan")
-        # Total pendapatan simulasi (seharusnya diambil dari catatan penjualan jika ada)
-        total_pendapatan = laporan_keuangan([0])  # Ganti dengan pendapatan sebenarnya
-        st.write(f"Total Pendapatan: Rp {total_pendapatan:,}")
+menu = ["Add Fish", "Remove Fish", "View Stock", "Upload Dataset"]
+choice = st.sidebar.selectbox("Menu", menu)
 
-    # Fitur Upload Dataset
-    elif menu == "Upload Dataset":
-        st.subheader("Upload Dataset Baru")
-        uploaded_file = st.file_uploader("Pilih file CSV", type="csv")
-        if uploaded_file is not None:
-            df = pd.read_csv(uploaded_file)
-            df.to_csv(file_dataset, index=False)
-            st.success("Dataset berhasil diunggah dan disimpan!")
-            st.dataframe(df)
+if choice == "Add Fish":
+    st.header("Add Fish")
+    fish_name = st.text_input("Enter fish name:")
+    quantity = st.number_input("Enter quantity to add:", min_value=1, step=1)
+    if st.button("Add"):
+        stock_manager.add_fish(fish_name, quantity)
+        st.success(f"{quantity} {fish_name} added to stock.")
 
-if __name__ == "__main__":
-    main()
+elif choice == "Remove Fish":
+    st.header("Remove Fish")
+    fish_name = st.text_input("Enter fish name:")
+    quantity = st.number_input("Enter quantity to remove:", min_value=1, step=1)
+    if st.button("Remove"):
+        stock_manager.remove_fish(fish_name, quantity)
+        st.success(f"{quantity} {fish_name} removed from stock.")
+
+elif choice == "View Stock":
+    st.header("Current Fish Stock")
+    stock_manager.view_stock()
+
+elif choice == "Upload Dataset":
+    st.header("Upload Dataset")
+    uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
+    if uploaded_file is not None:
+        stock_manager.upload_dataset(uploaded_file)
